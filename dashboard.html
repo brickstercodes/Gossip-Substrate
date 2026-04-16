@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gossip Protocol Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --border: #2e3344;
+    --text: #e1e4ed;
+    --text-muted: #8b8fa3;
+    --accent: #6c8cff;
+    --green: #4ade80;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --cyan: #22d3ee;
+    --magenta: #c084fc;
+    --orange: #fb923c;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .header {
+    padding: 24px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+  }
+
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .header .subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .sim-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: right;
+  }
+
+  .sim-info span { color: var(--cyan); }
+
+  /* Round Controls */
+  .controls {
+    padding: 16px 32px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .controls label {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .controls input[type="range"] {
+    flex: 1;
+    max-width: 500px;
+    accent-color: var(--accent);
+  }
+
+  .round-display {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 100px;
+  }
+
+  .btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+  /* Main Grid */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 140px);
+  }
+
+  .panel {
+    background: var(--bg);
+    padding: 20px;
+    overflow: auto;
+  }
+
+  .panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-title .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* Network Graph */
+  .network-container {
+    position: relative;
+    width: 100%;
+    height: 380px;
+    margin-bottom: 20px;
+  }
+
+  .agent-node {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--accent);
+    background: var(--surface);
+    transition: all 0.3s;
+    z-index: 2;
+  }
+
+  .agent-node.dead {
+    border-color: var(--red);
+    background: rgba(248, 113, 113, 0.1);
+    opacity: 0.5;
+  }
+
+  .agent-node.dead::after {
+    content: 'DEAD';
+    position: absolute;
+    bottom: -20px;
+    font-size: 10px;
+    color: var(--red);
+    font-weight: 700;
+  }
+
+  .agent-node .name {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .agent-node .count {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .agent-node.dead .name { color: var(--red); }
+
+  .gossip-line {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Knowledge Matrix */
+  .matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .matrix-table th {
+    padding: 8px 10px;
+    text-align: left;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+    font-size: 11px;
+  }
+
+  .matrix-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    transition: all 0.3s;
+  }
+
+  .matrix-table .agent-col {
+    font-weight: 600;
+    color: var(--accent);
+    width: 80px;
+  }
+
+  .cell-known {
+    background: rgba(74, 222, 128, 0.1);
+    color: var(--green);
+  }
+
+  .cell-new {
+    background: rgba(74, 222, 128, 0.25);
+    color: var(--green);
+    font-weight: 700;
+    animation: pulse 0.5s ease;
+  }
+
+  .cell-unknown {
+    color: var(--text-muted);
+    opacity: 0.3;
+  }
+
+  .cell-dead {
+    background: rgba(248, 113, 113, 0.1);
+    color: var(--red);
+    text-align: center;
+  }
+
+  @keyframes pulse {
+    0% { background: rgba(74, 222, 128, 0.5); }
+    100% { background: rgba(74, 222, 128, 0.25); }
+  }
+
+  /* Event Log */
+  .event-log {
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .event-item {
+    padding: 6px 10px;
+    border-left: 3px solid transparent;
+    font-size: 12px;
+    line-height: 1.5;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .event-item .event-time {
+    color: var(--text-muted);
+    font-size: 10px;
+    margin-right: 8px;
+  }
+
+  .event-item .event-agent {
+    font-weight: 600;
+    margin-right: 4px;
+  }
+
+  .event-item.GOSSIP_SEND { border-left-color: var(--accent); }
+  .event-item.GOSSIP_RECEIVE { border-left-color: var(--green); }
+  .event-item.GOSSIP_FAILED { border-left-color: var(--red); }
+  .event-item.STATE_MERGE { border-left-color: var(--yellow); }
+  .event-item.STATE_NO_CHANGE { border-left-color: var(--border); color: var(--text-muted); }
+  .event-item.CONFLICT_RESOLVED { border-left-color: var(--magenta); }
+  .event-item.HEARTBEAT_MISS { border-left-color: var(--orange); }
+  .event-item.AGENT_SUSPECTED { border-left-color: var(--yellow); }
+  .event-item.AGENT_DEAD { border-left-color: var(--red); font-weight: 600; }
+  .event-item.AGENT_KILLED { border-left-color: var(--red); font-weight: 700; background: rgba(248,113,113,0.1); }
+  .event-item.CONVERGENCE { border-left-color: var(--green); font-weight: 700; background: rgba(74,222,128,0.1); }
+
+  /* Convergence Progress */
+  .progress-container {
+    margin-top: 12px;
+  }
+
+  .progress-bar-bg {
+    width: 100%;
+    height: 24px;
+    background: var(--surface2);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--green));
+    transition: width 0.3s;
+    border-radius: 12px;
+  }
+
+  .progress-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+
+  .stats-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .stat-card {
+    padding: 12px 16px;
+    background: var(--surface);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    min-width: 120px;
+  }
+
+  .stat-card .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .stat-card .stat-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    text-transform: uppercase;
+  }
+
+  .load-prompt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .load-prompt p {
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
+  .load-prompt input[type="file"] {
+    display: none;
+  }
+
+  .load-btn {
+    padding: 12px 24px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .load-btn:hover { opacity: 0.9; }
+
+  .filter-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .filter-btn {
+    padding: 3px 8px;
+    font-size: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-muted);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .filter-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="loadScreen" class="load-prompt">
+  <h1 style="color: var(--accent); font-size: 24px;">Gossip Protocol Dashboard</h1>
+  <p>Load simulation_log.json to visualize the gossip protocol</p>
+  <label class="load-btn" for="fileInput">Load Log File</label>
+  <input type="file" id="fileInput" accept=".json">
+  <p style="font-size: 12px; margin-top: 8px;">Or drag and drop the file anywhere on this page</p>
+</div>
+
+<div id="dashboard" class="hidden">
+  <div class="header">
+    <div>
+      <h1>Gossip-Enhanced Communication Substrate</h1>
+      <div class="subtitle">Decentralized Knowledge Propagation via Gossip Protocol</div>
+    </div>
+    <div class="sim-info" id="simInfo"></div>
+  </div>
+
+  <div class="controls">
+    <label>Round:</label>
+    <div class="round-display" id="roundDisplay">Round 0</div>
+    <input type="range" id="roundSlider" min="0" max="15" value="0">
+    <button class="btn" id="playBtn" onclick="togglePlay()">Play</button>
+    <button class="btn" onclick="stepBack()">Prev</button>
+    <button class="btn" onclick="stepForward()">Next</button>
+  </div>
+
+  <div class="main">
+    <!-- Network Visualization -->
+    <div class="panel">
+      <div class="panel-title"><span class="dot" style="background: var(--accent)"></span> Network Topology</div>
+      <div class="network-container" id="networkGraph">
+        <svg id="linesSvg" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;"></svg>
+      </div>
+      <div class="progress-container">
+        <div class="panel-title" style="margin-top: 16px;"><span class="dot" style="background: var(--green)"></span> Global Convergence</div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progressFill" style="width: 0%"></div>
+          <div class="progress-label" id="progressLabel">0%</div>
+        </div>
+        <div class="stats-row" id="statsRow"></div>
+      </div>
+    </div>
+
+    <!-- Knowledge Matrix -->
+    <div class="panel">
+      <div class="panel-title"><span class="dot" style="background: var(--green)"></span> Knowledge Matrix</div>
+      <div id="matrixContainer"></div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="panel" style="grid-column: 1 / -1;">
+      <div class="panel-title"><span class="dot" style="background: var(--yellow)"></span> Event Log</div>
+      <div class="filter-bar" id="filterBar"></div>
+      <div class="event-log" id="eventLog"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let allEvents = [];
+let roundSummaries = {};  // round -> ROUND_SUMMARY data
+let maxRound = 0;
+let currentRound = 0;
+let playing = false;
+let playInterval = null;
+let sensorKeys = [];
+let agentIds = [];
+let killRound = 0;
+let killTarget = '';
+let activeFilters = new Set([
+  'GOSSIP_SEND', 'GOSSIP_RECEIVE', 'GOSSIP_FAILED',
+  'STATE_MERGE', 'CONFLICT_RESOLVED',
+  'HEARTBEAT_MISS', 'AGENT_SUSPECTED', 'AGENT_DEAD', 'AGENT_KILLED',
+  'CONVERGENCE'
+]);
+
+// Agent positions for the network graph (pentagon layout)
+const agentPositions = {
+  'Agent_A': { x: 200, y: 20 },
+  'Agent_B': { x: 350, y: 120 },
+  'Agent_C': { x: 300, y: 260 },
+  'Agent_D': { x: 100, y: 260 },
+  'Agent_E': { x: 50,  y: 120 },
+};
+
+// ---- Data Loading ----
+
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) loadFile(file);
+});
+
+document.body.addEventListener('dragover', (e) => { e.preventDefault(); });
+document.body.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+// Try auto-loading simulation_log.json from same directory
+window.addEventListener('load', () => {
+  fetch('simulation_log.json')
+    .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+    .then(data => initDashboard(data))
+    .catch(() => {}); // no auto-load available, user must pick file
+});
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      initDashboard(data);
+    } catch (err) {
+      alert('Failed to parse JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function initDashboard(events) {
+  allEvents = events;
+
+  // Extract metadata from SIMULATION_START event
+  const startEvent = events.find(e => e.event_type === 'SIMULATION_START');
+  if (startEvent) {
+    const d = startEvent.data;
+    maxRound = d.num_rounds;
+    killRound = d.kill_round;
+    killTarget = d.kill_target;
+    sensorKeys = d.sensors.map(s => s.key);
+    agentIds = d.sensors.map(s => s.agent);
+
+    document.getElementById('simInfo').innerHTML =
+      `<span>${d.num_agents}</span> agents | <span>${d.num_rounds}</span> rounds | ` +
+      `Kill <span>${d.kill_target}</span> @ round <span>${d.kill_round}</span>`;
+  }
+
+  // Index round summaries
+  events.filter(e => e.event_type === 'ROUND_SUMMARY').forEach(e => {
+    roundSummaries[e.round_number] = e.data;
+  });
+
+  // Build initial round 0 summary from start data
+  if (startEvent) {
+    const agents = {};
+    startEvent.data.sensors.forEach(s => {
+      agents[s.agent] = {
+        alive: true,
+        knowledge_count: 1,
+        known_keys: [s.key],
+        state: { [s.key]: { key: s.key, value: s.value, unit: s.unit, version: 1, source_agent: s.agent } }
+      };
+    });
+    roundSummaries[0] = { agents, total_sensors: sensorKeys.length };
+  }
+
+  // Setup UI
+  document.getElementById('loadScreen').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+
+  const slider = document.getElementById('roundSlider');
+  slider.max = maxRound;
+  slider.value = 0;
+  slider.addEventListener('input', (e) => {
+    currentRound = parseInt(e.target.value);
+    renderRound(currentRound);
+  });
+
+  setupFilterBar();
+  renderRound(0);
+}
+
+// ---- Rendering ----
+
+function renderRound(round) {
+  currentRound = round;
+  document.getElementById('roundSlider').value = round;
+  document.getElementById('roundDisplay').textContent = round === 0 ? 'Initial State' : `Round ${round}`;
+  renderNetwork(round);
+  renderMatrix(round);
+  renderEventLog(round);
+  renderStats(round);
+}
+
+function renderNetwork(round) {
+  const container = document.getElementById('networkGraph');
+  const svg = document.getElementById('linesSvg');
+
+  // Clear old nodes (keep svg)
+  container.querySelectorAll('.agent-node').forEach(n => n.remove());
+  svg.innerHTML = '';
+
+  const summary = roundSummaries[round];
+  if (!summary) return;
+
+  // Draw gossip lines for this round
+  const roundEvents = allEvents.filter(e =>
+    e.round_number === round && e.event_type === 'GOSSIP_SEND'
+  );
+
+  roundEvents.forEach(e => {
+    const from = agentPositions[e.agent_id];
+    const to = agentPositions[e.target_agent];
+    if (from && to) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', from.x + 40);
+      line.setAttribute('y1', from.y + 40);
+      line.setAttribute('x2', to.x + 40);
+      line.setAttribute('y2', to.y + 40);
+      line.setAttribute('stroke', 'rgba(108, 140, 255, 0.4)');
+      line.setAttribute('stroke-width', '2');
+      line.setAttribute('stroke-dasharray', '6,4');
+
+      // Arrowhead
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const len = Math.sqrt(dx*dx + dy*dy);
+      const nx = dx/len, ny = dy/len;
+      const arrowX = to.x + 40 - nx * 42;
+      const arrowY = to.y + 40 - ny * 42;
+
+      const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const ax = arrowX, ay = arrowY;
+      const px = -ny, py = nx;
+      const tipX = ax + nx * 10, tipY = ay + ny * 10;
+      const lx = ax + px * 5, ly = ay + py * 5;
+      const rx = ax - px * 5, ry = ay - py * 5;
+      arrow.setAttribute('points', `${tipX},${tipY} ${lx},${ly} ${rx},${ry}`);
+      arrow.setAttribute('fill', 'rgba(108, 140, 255, 0.6)');
+
+      svg.appendChild(line);
+      svg.appendChild(arrow);
+    }
+  });
+
+  // Draw failed gossip lines
+  const failedEvents = allEvents.filter(e =>
+    e.round_number === round && e.event_type === 'GOSSIP_FAILED'
+  );
+
+  failedEvents.forEach(e => {
+    const from = agentPositions[e.agent_id];
+    const to = agentPositions[e.target_agent];
+    if (from && to) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', from.x + 40);
+      line.setAttribute('y1', from.y + 40);
+      line.setAttribute('x2', to.x + 40);
+      line.setAttribute('y2', to.y + 40);
+      line.setAttribute('stroke', 'rgba(248, 113, 113, 0.5)');
+      line.setAttribute('stroke-width', '2');
+      line.setAttribute('stroke-dasharray', '4,4');
+      svg.appendChild(line);
+
+      // X mark at midpoint
+      const mx = (from.x + to.x) / 2 + 40;
+      const my = (from.y + to.y) / 2 + 40;
+      const cross = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      cross.setAttribute('x', mx);
+      cross.setAttribute('y', my + 4);
+      cross.setAttribute('text-anchor', 'middle');
+      cross.setAttribute('fill', '#f87171');
+      cross.setAttribute('font-size', '14');
+      cross.setAttribute('font-weight', 'bold');
+      cross.textContent = 'X';
+      svg.appendChild(cross);
+    }
+  });
+
+  // Draw agent nodes
+  agentIds.forEach(id => {
+    const pos = agentPositions[id];
+    if (!pos) return;
+
+    const agentData = summary.agents[id];
+    const isDead = agentData && !agentData.alive;
+
+    const node = document.createElement('div');
+    node.className = 'agent-node' + (isDead ? ' dead' : '');
+    node.style.left = pos.x + 'px';
+    node.style.top = pos.y + 'px';
+
+    const knowledgeCount = isDead ? '-' : (agentData?.knowledge_count || 0);
+    const totalSensors = summary.total_sensors;
+
+    node.innerHTML = `
+      <div class="name">${id.replace('Agent_', '')}</div>
+      <div class="count">${isDead ? 'DEAD' : knowledgeCount + '/' + totalSensors}</div>
+    `;
+    container.appendChild(node);
+  });
+}
+
+function renderMatrix(round) {
+  const container = document.getElementById('matrixContainer');
+  const summary = roundSummaries[round];
+  const prevSummary = round > 0 ? roundSummaries[round - 1] : null;
+
+  if (!summary) { container.innerHTML = '<p style="color: var(--text-muted)">No data</p>'; return; }
+
+  let html = '<table class="matrix-table"><thead><tr><th>Agent</th>';
+  sensorKeys.forEach(k => {
+    html += `<th>${k}</th>`;
+  });
+  html += '<th>Status</th></tr></thead><tbody>';
+
+  agentIds.forEach(agentId => {
+    const agentData = summary.agents[agentId];
+    const prevAgent = prevSummary?.agents?.[agentId];
+
+    if (!agentData || !agentData.alive) {
+      html += `<tr><td class="agent-col" style="color: var(--red)">${agentId}</td>`;
+      sensorKeys.forEach(() => { html += '<td class="cell-dead">-</td>'; });
+      html += '<td class="cell-dead">DEAD</td></tr>';
+      return;
+    }
+
+    html += `<tr><td class="agent-col">${agentId}</td>`;
+    sensorKeys.forEach(key => {
+      const entry = agentData.state?.[key];
+      if (entry) {
+        const wasKnownBefore = prevAgent?.state?.[key];
+        const cellClass = wasKnownBefore ? 'cell-known' : 'cell-new';
+        html += `<td class="${cellClass}">${entry.value}${entry.unit}</td>`;
+      } else {
+        html += '<td class="cell-unknown">---</td>';
+      }
+    });
+    html += '<td style="color: var(--green)">ALIVE</td></tr>';
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function renderEventLog(round) {
+  const log = document.getElementById('eventLog');
+
+  // Get events up to and including this round
+  const events = allEvents.filter(e =>
+    e.round_number <= round &&
+    e.round_number >= 0 &&
+    e.event_type !== 'ROUND_SUMMARY' &&
+    e.event_type !== 'ROUND_START' &&
+    e.event_type !== 'SIMULATION_START' &&
+    activeFilters.has(e.event_type)
+  );
+
+  // Show last 50 events for performance
+  const recentEvents = events.slice(-50);
+
+  let html = '';
+  recentEvents.forEach(e => {
+    const agent = e.agent_id ? `<span class="event-agent">${e.agent_id}</span>` : '';
+    html += `<div class="event-item ${e.event_type}">` +
+      `<span class="event-time">R${e.round_number}</span>` +
+      `${agent}${e.message}</div>`;
+  });
+
+  log.innerHTML = html;
+  log.scrollTop = log.scrollHeight;
+}
+
+function renderStats(round) {
+  const summary = roundSummaries[round];
+  if (!summary) return;
+
+  const aliveAgents = Object.values(summary.agents).filter(a => a.alive);
+  const totalKnowledge = aliveAgents.reduce((s, a) => s + (a.knowledge_count || 0), 0);
+  const maxKnowledge = aliveAgents.length * summary.total_sensors;
+  const pct = maxKnowledge > 0 ? Math.round((totalKnowledge / maxKnowledge) * 100) : 0;
+
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = pct + '% converged';
+
+  // Check if convergence was achieved
+  const convergenceEvent = allEvents.find(e =>
+    e.event_type === 'CONVERGENCE' && e.round_number <= round
+  );
+
+  const statsHtml = `
+    <div class="stat-card">
+      <div class="stat-value">${aliveAgents.length}/${agentIds.length}</div>
+      <div class="stat-label">Agents Alive</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${totalKnowledge}/${maxKnowledge}</div>
+      <div class="stat-label">Total Knowledge</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color: ${convergenceEvent ? 'var(--green)' : 'var(--yellow)'}">
+        ${convergenceEvent ? 'Round ' + convergenceEvent.data.convergence_round : 'Pending'}
+      </div>
+      <div class="stat-label">Convergence</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${round}</div>
+      <div class="stat-label">Current Round</div>
+    </div>
+  `;
+  document.getElementById('statsRow').innerHTML = statsHtml;
+}
+
+function setupFilterBar() {
+  const types = [
+    'GOSSIP_SEND', 'GOSSIP_RECEIVE', 'GOSSIP_FAILED',
+    'STATE_MERGE', 'STATE_NO_CHANGE', 'CONFLICT_RESOLVED',
+    'HEARTBEAT_MISS', 'AGENT_SUSPECTED', 'AGENT_DEAD', 'AGENT_KILLED',
+    'CONVERGENCE'
+  ];
+
+  const bar = document.getElementById('filterBar');
+  types.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (activeFilters.has(t) ? ' active' : '');
+    btn.textContent = t.replace(/_/g, ' ');
+    btn.onclick = () => {
+      if (activeFilters.has(t)) { activeFilters.delete(t); btn.classList.remove('active'); }
+      else { activeFilters.add(t); btn.classList.add('active'); }
+      renderEventLog(currentRound);
+    };
+    bar.appendChild(btn);
+  });
+}
+
+// ---- Controls ----
+
+function togglePlay() {
+  playing = !playing;
+  const btn = document.getElementById('playBtn');
+  if (playing) {
+    btn.textContent = 'Pause';
+    btn.classList.add('active');
+    playInterval = setInterval(() => {
+      if (currentRound >= maxRound) { togglePlay(); return; }
+      currentRound++;
+      renderRound(currentRound);
+    }, 1000);
+  } else {
+    btn.textContent = 'Play';
+    btn.classList.remove('active');
+    clearInterval(playInterval);
+  }
+}
+
+function stepForward() {
+  if (currentRound < maxRound) renderRound(currentRound + 1);
+}
+
+function stepBack() {
+  if (currentRound > 0) renderRound(currentRound - 1);
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') stepForward();
+  else if (e.key === 'ArrowLeft') stepBack();
+  else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+});
+</script>
+</body>
+</html>
